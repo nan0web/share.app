@@ -3,6 +3,5 @@
 	"entry": ["src/index.js"],
 	"project": ["src/**/*.js"],
 	"ignore": ["src/test/**", "src/**/*.spec.js", "releases/**", "src/README.md.js"],
-	"ignoreExportsUsedInFile": true,
-	"ignoreDependencies": ["@nan0web/ui-cli", "@nan0web/ui-lit"]
+	"ignoreExportsUsedInFile": true
 }
