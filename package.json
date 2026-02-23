@@ -1,0 +1,17 @@
+{
+	"name": "@nan0web/share.app",
+	"version": "1.0.0",
+	"description": "Sovereign Social Distribution Layer (Rules Engine)",
+	"type": "module",
+	"main": "src/index.js",
+	"scripts": {
+		"start": "node src/index.js",
+		"test": "node --test \"src/**/*.spec.js\"",
+		"test:integration": "node --test \"src/test/releases/**/*.test.js\"",
+		"test:all": "node --test \"src/**/*.spec.js\" \"src/test/releases/**/*.test.js\""
+	},
+	"dependencies": {
+		"@nan0web/ui-cli": "workspace:*",
+		"@nan0web/ui-lit": "workspace:*"
+	}
+}
