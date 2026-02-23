@@ -12,6 +12,7 @@ export {
 	SocialAdapterContent,
 	SocialAdapterFeedback,
 	SocialAdapterTarget,
+	SocialAdapterValidationError,
 	createConfig,
 	createLimits,
 	createContent,

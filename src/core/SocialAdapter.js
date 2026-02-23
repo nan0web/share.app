@@ -113,4 +113,19 @@ export class SocialAdapter {
 		}
 		throw new NotImplementedError('reply')
 	}
+
+	/**
+	 * Edits an already published post on the platform.
+	 * Only available if the adapter declares the 'edit' capability.
+	 *
+	 * @param {string} postId - The platform's post ID to edit
+	 * @param {import('./Models.js').SocialAdapterContent} content - New content
+	 * @returns {Promise<import('./Models.js').SocialAdapterPublishResult>}
+	 */
+	async update(postId, content) {
+		if (!this.can('edit')) {
+			throw new Error(`Adapter '${this.constructor.name}' does not support editing posts.`)
+		}
+		throw new NotImplementedError('update')
+	}
 }

@@ -1,12 +1,20 @@
 # @nan0web/share.app
 
-> **Sovereign Social Distribution Layer** — Rules Engine для автоматичного публікування контенту в соціальних мережах.
+> **Sovereign Social Distribution Layer** — Rules Engine for automatic content distribution across social platforms.
 
-Автор налаштовує правила один раз. Далі `share.app` сам публікує новий контент у потрібні платформи з потрібною затримкою.
+Configure your rules once. Then `share.app` publishes new content to the right platforms with the right delay — automatically.
 
 ---
 
-## Quick Start (3 рядки)
+## Installation
+
+```bash
+npm install @nan0web/share.app
+```
+
+---
+
+## Quick Start
 
 ```js
 import { DummyAdapter, evaluateRules, executeTasks } from '@nan0web/share.app'
@@ -39,11 +47,14 @@ Rules Engine (evaluateRules)
 Tasks [ { adapter, content, delayMs } ]
     │
     ▼
-executeTasks → immediate tasks run now
+executeTasks → adapter.verify() gate
+             → immediate tasks run now
              → delayed tasks via setTimeout (dev) / Queue (prod)
     │
     ▼
 SocialAdapter.publish(content) → { id, url }
+SocialAdapter.update(id, content) → { id, url }
+SocialAdapter.delete(id) → true
 ```
 
 ---
@@ -53,112 +64,108 @@ SocialAdapter.publish(content) → { id, url }
 ### `SocialAdapter` — Base Protocol
 
 ```js
-import { SocialAdapter } from '@nan0web/share.app'
+import { SocialAdapter, createLimits } from '@nan0web/share.app'
 
 class MyAdapter extends SocialAdapter {
-  get id() {
-    return 'my-platform'
-  }
-  get capabilities() {
-    return ['media', 'delete', 'reply']
-  }
-  get limits() {
-    return createLimits({ maxLength: 500 })
-  }
-  async verify() {
-    /* check credentials */ return true
-  }
-  async publish(content) {
-    /* ... */ return { id, url }
-  }
-  async delete(postId) {
-    /* ... */ return true
-  }
-  async syncFeedback(postId) {
-    /* ... */ return [SocialAdapterFeedback]
-  }
-  async reply(target, text) {
-    /* ... */ return { id }
-  }
+  get id() { return 'my-platform' }
+  get capabilities() { return ['media', 'delete', 'reply', 'edit'] }
+  get limits() { return createLimits({ maxLength: 500 }) }
+
+  async verify() { return true }
+  async publish(content) { return { id, url } }
+  async update(postId, content) { return { id, url } }
+  async delete(postId) { return true }
+  async syncFeedback(postId) { return [feedback] }
+  async reply(target, text) { return { id } }
 }
 ```
 
-### `RulesEngine`
+### `RulesEngine` — Delay Parser
 
 ```js
-import { evaluateRules, executeTasks, parseDelay } from '@nan0web/share.app'
+import { parseDelay } from '@nan0web/share.app'
 
-// Parse delays
-parseDelay('30m') // → 1_800_000ms
-parseDelay('2h') // → 7_200_000ms
-parseDelay('1d 09:00') // → ms until tomorrow 09:00
-parseDelay('Mon 10:00') // → ms until next Monday 10:00
+parseDelay('30m')        // → 1_800_000ms
+parseDelay('2h')         // → 7_200_000ms
+parseDelay('1d 09:00')   // → ms until tomorrow 09:00
+parseDelay('Mon 10:00')  // → ms until next Monday 10:00
 ```
 
-### `Models` — Typed Schemas
+### `Models` — Self-Describing Schemas
 
 ```js
-import {
-  SocialAdapterConfig,
-  SocialAdapterFeedback,
-  TelegramAdapterConfig,
-} from '@nan0web/share.app'
+import { SocialAdapterConfig, TelegramAdapterConfig } from '@nan0web/share.app'
 
-// Every model: instanceof check, toJSON(), static field.help/default
 const config = new TelegramAdapterConfig({ botToken: 'abc', chatId: '@ch' })
 config instanceof SocialAdapterConfig // true
 config.toJSON() // { botToken, chatId, parseMode, disableNotification, ... }
 
-// Auto-documentation:
-TelegramAdapterConfig.botToken.help // 'Telegram Bot API token from @BotFather.'
+// Auto-documentation via static field descriptors:
+TelegramAdapterConfig.botToken.help    // 'Telegram Bot API token from @BotFather.'
 TelegramAdapterConfig.parseMode.default // 'HTML'
+```
+
+### `Model.describe()` — Auto-Documentation (v1.1.0)
+
+```js
+import { TelegramAdapterConfig } from '@nan0web/share.app'
+
+const docs = TelegramAdapterConfig.describe()
+// → [
+//   { field: 'botToken', help: 'Telegram Bot API token...', default: '' },
+//   { field: 'chatId', help: 'Target chat ID...', default: '' },
+//   { field: 'parseMode', help: '...', default: 'HTML' },
+//   ...
+// ]
+```
+
+---
+
+## Content Validation (v1.1.0)
+
+```js
+import { SocialAdapterContent } from '@nan0web/share.app'
+
+const result = SocialAdapterContent.validate({ text: 'Hello!', type: 'post' })
+// → { valid: true, errors: [] }
+
+const invalid = SocialAdapterContent.validate({})
+// → { valid: false, errors: ['Content must have text or media'] }
+```
+
+---
+
+## Full Lifecycle: Publish → Update → Delete
+
+```js
+import { DummyAdapter } from '@nan0web/share.app'
+
+const adapter = new DummyAdapter({ account: 'me' })
+await adapter.verify()
+
+// 1. Publish
+const post = await adapter.publish({ text: 'First version', type: 'post' })
+// → { id: 'dummy-post-...', url: 'https://dummy.nan0web.app/posts/...' }
+
+// 2. Update (v1.1.0)
+const updated = await adapter.update(post.id, { text: 'Updated version' })
+// → { id: 'dummy-post-...', url: '...' }
+
+// 3. Delete
+const deleted = await adapter.delete(post.id)
+// → true
 ```
 
 ---
 
 ## Available Adapters
 
-| Adapter              | Platform                   | Status    |
-| -------------------- | -------------------------- | --------- |
-| `DummyAdapter`       | In-memory (test/reference) | ✅ v1.0.0 |
-| `TelegramAdapter`    | Telegram Bot API           | ✅ v1.0.0 |
-| `@nan0web/share-rss` | RSS Feed                   | 🔜 v1.1.0 |
-| `@nan0web/share-x`   | X (Twitter) API            | 🔜 v1.2.0 |
+| Adapter           | Platform                   | Status    |
+| ----------------- | -------------------------- | --------- |
+| `DummyAdapter`    | In-memory (test/reference) | ✅ v1.0.0 |
+| `TelegramAdapter` | Telegram Bot API           | ✅ v1.0.0 |
 
----
-
-## Rule Schema
-
-```yaml
-# YAML config (planned — currently pass as JS objects)
-rules:
-  - name: Public posts to Telegram
-    if:
-      tags: [public]
-      lang: uk
-    publish:
-      - adapter: telegram
-        delay: 0
-      - adapter: telegram
-        delay: 1d 09:00 # next day at 09:00
-
-  - name: Articles to all platforms (delayed)
-    if:
-      type: article
-    publish:
-      - adapter: telegram
-        delay: 30m
-```
-
----
-
-## Tests
-
-```bash
-npm test              # unit tests (96 specs)
-npm run test:integration   # E2E (6 integration scenarios)
-npm run test:all      # all 103 tests
-```
+Planned: `@nan0web/share-rss` (RSS Feed), `@nan0web/share-x` (X/Twitter API).
 
 ---
 
@@ -167,26 +174,46 @@ npm run test:all      # all 103 tests
 | Token                                    | Meaning                               |
 | ---------------------------------------- | ------------------------------------- |
 | `media`                                  | Platform accepts photo/video/document |
+| `edit`                                   | Platform supports editing posts       |
 | `delete`                                 | Platform allows deleting posts        |
 | `reply`                                  | Platform supports native replies      |
 | `threads`                                | Platform supports threaded posts      |
 | `photo` / `video` / `document` / `audio` | Specific media types                  |
 
 ```js
-adapter.can('media') // true / false
+adapter.can('media')  // true / false
+adapter.can('edit')   // true / false
 adapter.can('delete') // true / false
 ```
 
 ---
 
-## What's Next (v1.1.0)
+## Tests
 
-- `update(postId, content)` — edit published posts
-- `verify()` as gate before publish in RulesEngine
-- Content validation on `evaluateRules` input
-- `Model.describe()` for auto-documentation generation
-- RSS adapter (`@nan0web/share-rss`)
+```bash
+npm test                 # unit tests (120 specs)
+npm run test:docs        # documentation tests
+npm run test:integration # E2E integration scenarios
+npm run test:all         # full pipeline: test → docs → integration → knip
+```
 
 ---
 
-_Part of the [nan•web](https://github.com/nan0web) Sovereign Digital State ecosystem._
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-adapter`)
+3. Write tests first (TDD) — see `src/test/` for patterns
+4. Implement your adapter extending `SocialAdapter`
+5. Ensure `npm run test:all` passes (all tests + knip)
+6. Submit a Pull Request
+
+---
+
+## License
+
+ISC © [nan•web](https://github.com/nan0web)
+
+---
+
+*Part of the [nan•web](https://github.com/nan0web) Sovereign Digital State ecosystem.*

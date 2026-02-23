@@ -53,7 +53,7 @@ export class DummyAdapter extends SocialAdapter {
 	}
 
 	get capabilities() {
-		return ['media', 'delete', 'reply', 'photo', 'document']
+		return ['media', 'delete', 'reply', 'edit', 'photo', 'document']
 	}
 
 	get limits() {
@@ -127,5 +127,20 @@ export class DummyAdapter extends SocialAdapter {
 			author: this.config.account || 'Publisher (Me)',
 		})
 		return { id: replyId, text }
+	}
+
+	/**
+	 * @param {string} postId
+	 * @param {import('./Models.js').SocialAdapterContent} content
+	 * @returns {Promise<import('./Models.js').SocialAdapterPublishResult>}
+	 */
+	async update(postId, content) {
+		if (!this.posts.has(postId)) {
+			throw new Error('Post not found on Dummy platform')
+		}
+		const existing = this.posts.get(postId)
+		const updated = { ...existing, ...content, id: postId, updatedAt: new Date() }
+		this.posts.set(postId, updated)
+		return { id: postId, url: `https://dummy.nan0web.app/posts/${postId}` }
 	}
 }

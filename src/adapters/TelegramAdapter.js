@@ -74,7 +74,7 @@ export class TelegramAdapter extends SocialAdapter {
 	}
 
 	get capabilities() {
-		return ['media', 'delete', 'reply', 'photo', 'document', 'video', 'audio']
+		return ['media', 'delete', 'reply', 'edit', 'photo', 'document', 'video', 'audio']
 	}
 
 	get limits() {
@@ -182,5 +182,36 @@ export class TelegramAdapter extends SocialAdapter {
 			parse_mode: this.config.parseMode,
 		})
 		return { id: String(result.message_id) }
+	}
+
+	/**
+	 * @param {string} postId
+	 * @param {import('../core/Models.js').SocialAdapterContent} content
+	 * @returns {Promise<import('../core/Models.js').SocialAdapterPublishResult>}
+	 */
+	async update(postId, content) {
+		const { chatId, parseMode } = this.config
+		const messageId = Number(postId)
+
+		if (content.photo) {
+			await this._callApi('editMessageCaption', {
+				chat_id: chatId,
+				message_id: messageId,
+				caption: content.text || '',
+				parse_mode: parseMode,
+			})
+		} else {
+			await this._callApi('editMessageText', {
+				chat_id: chatId,
+				message_id: messageId,
+				text: content.text,
+				parse_mode: parseMode,
+			})
+		}
+
+		return {
+			id: postId,
+			url: `https://t.me/c/${String(chatId).replace(/^-100/, '')}/${postId}`,
+		}
 	}
 }

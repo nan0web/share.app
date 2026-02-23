@@ -11,6 +11,7 @@
  *   publish: [{ adapter: string, delay?: string|number, channel?: string }]
  * }
  */
+import { SocialAdapterContent, SocialAdapterValidationError } from './Models.js'
 
 /**
  * Parses human-readable delay strings into milliseconds.
@@ -107,6 +108,12 @@ export function matchesConditions(content, conditions) {
  * @returns {Array<{ adapter: SocialAdapter, content: Object, delayMs: number, channel?: string, ruleName: string }>}
  */
 export function evaluateRules(content, rules, adapters) {
+	// Validate content before evaluating rules
+	const validation = SocialAdapterContent.validate(content)
+	if (!validation.valid) {
+		throw new SocialAdapterValidationError(validation.errors)
+	}
+
 	const tasks = []
 
 	for (const rule of rules) {
@@ -136,14 +143,40 @@ export function evaluateRules(content, rules, adapters) {
 
 /**
  * Executes a list of publish tasks, respecting delays.
- * In a real daemon this would enqueue to a persistent queue.
- * For simplicity, we use setTimeout-based scheduling or immediate execution.
  *
  * @param {Array<Object>} tasks - Output of evaluateRules
+ * @param {{ verify?: boolean, testMode?: boolean }} [opts]
  * @returns {Promise<Array<{ id: string, url: string, ruleName: string, adapter: string }>>}
  */
-export async function executeTasks(tasks) {
+export async function executeTasks(tasks, opts = {}) {
 	const results = []
+	const { verify = false } = opts
+
+	// verify() gate: check each adapter once before any publish
+	if (verify) {
+		/** @type {Map<object, boolean>} */
+		const verified = new Map()
+
+		for (const task of tasks) {
+			if (!verified.has(task.adapter)) {
+				try {
+					await task.adapter.verify()
+					verified.set(task.adapter, true)
+				} catch (err) {
+					console.warn(
+						`[share.app] Adapter '${task.adapter.id}' failed verify(): ${err.message}. Skipping.`,
+					)
+					verified.set(task.adapter, false)
+				}
+			}
+		}
+
+		// Filter out tasks from failed adapters
+		const failedAdapters = new Set([...verified.entries()].filter(([, ok]) => !ok).map(([a]) => a))
+		if (failedAdapters.size > 0) {
+			tasks = tasks.filter((t) => !failedAdapters.has(t.adapter))
+		}
+	}
 
 	// Group by delay: immediate first, then scheduled
 	const immediate = tasks.filter((t) => t.delayMs === 0)
@@ -156,7 +189,6 @@ export async function executeTasks(tasks) {
 	}
 
 	// For delayed tasks, we return promises that resolve after the delay.
-	// In production this would be cron/queue based. Here we use setTimeout.
 	const delayedResults = await Promise.all(
 		delayed.map(
 			(task) =>

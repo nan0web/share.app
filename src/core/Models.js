@@ -35,6 +35,32 @@ export class Model {
 	toJSON() {
 		return { ...this }
 	}
+
+	/**
+	 * Returns auto-documentation for all declared static field definitions.
+	 * Walks up the prototype chain to include inherited fields.
+	 * @returns {Array<{ field: string, help: string, default: any }>}
+	 */
+	static describe() {
+		const result = []
+		const seen = new Set()
+		let proto = this
+
+		while (proto && proto !== Function.prototype) {
+			for (const key of Object.getOwnPropertyNames(proto)) {
+				if (seen.has(key)) continue
+				seen.add(key)
+				if (key === 'length' || key === 'prototype' || key === 'name') continue
+				const val = proto[key]
+				if (val && typeof val === 'object' && 'help' in val && 'default' in val) {
+					result.unshift({ field: key, help: val.help, default: val.default })
+				}
+			}
+			proto = Object.getPrototypeOf(proto)
+		}
+
+		return result
+	}
 }
 
 // ─── SocialAdapterConfig ─────────────────────────────────────
@@ -152,6 +178,43 @@ export class SocialAdapterContent extends Model {
 		this.type = raw.type ?? SocialAdapterContent.type.default
 		this.lang = raw.lang ?? SocialAdapterContent.lang.default
 		this.options = raw.options ?? SocialAdapterContent.options.default
+	}
+
+	/**
+	 * Validates raw content before publishing.
+	 * Content must have at least text OR one media field.
+	 * @param {Partial<SocialAdapterContent>} raw
+	 * @returns {{ valid: boolean, errors: string[] }}
+	 */
+	static validate(raw = {}) {
+		const errors = []
+		const hasText = raw.text && raw.text.trim().length > 0
+		const hasMedia = !!(raw.photo || raw.video || raw.document || raw.audio)
+
+		if (!hasText && !hasMedia) {
+			errors.push(
+				'content must have at least text or one media field (photo, video, document, audio)',
+			)
+		}
+
+		return { valid: errors.length === 0, errors }
+	}
+}
+
+/**
+ * Validation error thrown when content fails schema checks.
+ */
+export class SocialAdapterValidationError extends Error {
+	/** @type {string[]} */
+	errors
+
+	/**
+	 * @param {string[]} errors
+	 */
+	constructor(errors = []) {
+		super(`Content validation failed: ${errors.join('; ')}`)
+		this.name = 'SocialAdapterValidationError'
+		this.errors = errors
 	}
 }
 
